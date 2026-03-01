@@ -18,7 +18,9 @@ from personal_assistant.tools.youtube_summary import (
 logger = logging.getLogger(__name__)
 
 # Model selection — override via AGENT_MODEL env var
-MODEL = os.getenv("AGENT_MODEL", "gemini-2.0-flash-001")
+# Use "gemini-2.0-flash" for free Google AI Studio keys (chat mode).
+# Use "gemini-2.0-flash-live-001" for Vertex AI live/streaming mode.
+MODEL = os.getenv("AGENT_MODEL", "gemini-2.0-flash")
 
 root_agent = Agent(
     model=MODEL,
