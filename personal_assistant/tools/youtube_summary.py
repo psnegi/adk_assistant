@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from typing import Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from google.adk.tools import FunctionTool
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+from personal_assistant.tools.retry_utils import retry_with_backoff
+
+logger = logging.getLogger(__name__)
 
 # For transcript extraction
 try:
@@ -19,6 +23,7 @@ except ImportError:
     TRANSCRIPT_AVAILABLE = False
 
 
+@retry_with_backoff(retryable_exceptions=(HttpError, Exception))
 def search_youtube_videos(
     query: str,
     max_results: int = 5,
@@ -53,7 +58,7 @@ def search_youtube_videos(
         youtube = build("youtube", "v3", developerKey=api_key)
         
         # Calculate date for published after filter
-        published_after = (datetime.utcnow() - timedelta(days=days_back)).isoformat("T") + "Z"
+        published_after = (datetime.now(timezone.utc) - timedelta(days=days_back)).isoformat("T").replace("+00:00", "Z")
         
         # Determine video duration filter
         video_duration = "any"

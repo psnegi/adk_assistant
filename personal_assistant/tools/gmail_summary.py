@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 from datetime import datetime, timedelta, timezone
 from typing import List
@@ -9,6 +10,9 @@ from google.adk.tools import FunctionTool
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+from personal_assistant.tools.retry_utils import retry_with_backoff
+
+logger = logging.getLogger(__name__)
 
 _SCOPES: List[str] = ["https://www.googleapis.com/auth/gmail.readonly"]
 
