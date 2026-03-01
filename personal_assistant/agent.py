@@ -4,6 +4,8 @@ import os
 from dotenv import load_dotenv
 from google.adk.agents.llm_agent import Agent
 from google.adk.tools import google_search
+from personal_assistant.model_config import build_model
+from personal_assistant.research_agent import research_pipeline
 from personal_assistant.tools.gmail_summary import gmail_summary_tool, get_email_content_tool
 from personal_assistant.tools.token_cost_calculator import (
     token_cost_calculator_tool,
@@ -59,10 +61,9 @@ if not os.getenv("YOUTUBE_API_KEY"):
     )
 
 # ── Model selection ───────────────────────────────────────────────────────────
-# Override via AGENT_MODEL env var.
-# Use "gemini-2.0-flash" for free Google AI Studio keys (chat mode).
-# Use "gemini-2.0-flash-live-001" for Vertex AI live/streaming mode.
-MODEL = os.getenv("AGENT_MODEL", "gemini-2.0-flash")
+# Override via AGENT_MODEL env var for Gemini models, or set USE_OLLAMA=true
+# with OLLAMA_MODEL / OLLAMA_BASE_URL to use a locally hosted Ollama model.
+MODEL = build_model()
 
 # ── Agent instructions (plan → execute → verify loop) ────────────────────────
 _INSTRUCTION = """

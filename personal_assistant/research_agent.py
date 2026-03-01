@@ -16,12 +16,13 @@ import os
 from google.adk.agents import LlmAgent, LoopAgent, SequentialAgent
 from google.adk.tools import google_search
 
+from personal_assistant.model_config import build_model
 from personal_assistant.tools.web_research import fetch_web_page_tool
 
 # ---------------------------------------------------------------------------
 # Model selection – honours the same env var as the root agent
 # ---------------------------------------------------------------------------
-_MODEL = os.getenv("AGENT_MODEL", "gemini-2.0-flash")
+_MODEL = build_model()
 
 # ---------------------------------------------------------------------------
 # Stage 1 – Search
