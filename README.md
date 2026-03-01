@@ -17,6 +17,12 @@ It integrates **Gmail**, **YouTube**, **Google Search**, and **token-cost tracki
 | **Search** | Google Search | General web search powered by Google |
 | **Cost** | `token_cost_calculator` | Per-interaction cost breakdown for Gemini models |
 | | `batch_cost_estimator` | Estimate costs across N interactions |
+| **Memory** | `update_memory` | Persist facts, preferences, and notes in a local markdown file |
+| | `read_memory` | Recall stored memory (all sections or a specific one) |
+| | `list_memory_sections` | List all top-level sections in memory |
+| | `clear_memory_section` | Remove a section or sub-section from memory |
+| **File Search** | `search_files` | Find files by partial name / glob pattern, bounded by time |
+| | `search_file_content` | Full-text search inside files, optionally filtered by name and time |
 
 ---
 
@@ -129,7 +135,16 @@ adk_assistant/
 │   └── tools/
 │       ├── gmail_summary.py        # Gmail read tools
 │       ├── youtube_summary.py      # YouTube search & transcript tools
-│       └── token_cost_calculator.py# Cost estimation tools
+│       ├── token_cost_calculator.py# Cost estimation tools
+│       ├── memory_manager.py       # Hierarchical local memory (markdown)
+│       └── file_search.py          # Local file & content search
+├── tests/
+│   ├── test_gmail_tools.py
+│   ├── test_youtube_tools.py
+│   ├── test_token_cost_calculator.py
+│   ├── test_retry_utils.py
+│   ├── test_memory_manager.py      # Memory manager tests
+│   └── test_file_search.py         # File search tests
 ├── .gitignore
 └── README.md
 ```
@@ -163,9 +178,18 @@ Common choices:
 Ensure `GOOGLE_CLOUD_LOCATION` supports your chosen model.  
 Gemini 2.0 Live requires `us-east4`.
 
----
+### Memory file location
 
-## Usage Examples
+The agent stores memory in `~/.adk_assistant_memory.md` by default.
+Override with the `MEMORY_FILE` env var:
+
+```env
+MEMORY_FILE=/path/to/my_memory.md
+```
+
+The file is plain markdown — you can read and edit it directly.
+
+---
 
 ```
 # Gmail
@@ -180,6 +204,16 @@ Gemini 2.0 Live requires `us-east4`.
 # Cost
 "How much would 1000 input tokens and 500 output tokens cost on gemini-2.0-flash-001?"
 "Estimate batch cost for 100 interactions"
+
+# Memory
+"Remember that I prefer concise bullet-point answers"
+"What do you know about me?"
+"Forget the Notes section"
+
+# File Search
+"Find all PDF files in ~/Documents modified after 2024-01-01"
+"Search for 'budget' inside text files under ~/projects"
+"Find files named 'report' changed before 2024-06-01"
 ```
 
 ---
@@ -197,6 +231,9 @@ Gemini 2.0 Live requires `us-east4`.
 
 ## Roadmap
 
+- [x] Hierarchical local memory (markdown-backed)
+- [x] Local file search by name, glob, and time bounds
+- [x] Full-text search inside local files
 - [ ] Chunked transcript processing for multi-hour podcasts
 - [ ] Automatic per-query cost tracking
 - [ ] Google Calendar integration
