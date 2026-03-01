@@ -32,7 +32,7 @@ It integrates **Gmail**, **YouTube**, **Google Search**, and **token-cost tracki
 |---|---|
 | **Python 3.11+** | 3.13 recommended |
 | **uv** (package manager) | Installed automatically in the dev container |
-| **Gemini API access** | *Either* a free [Google AI Studio](https://aistudio.google.com/apikey) key **or** a GCP project with Vertex AI enabled |
+| **Gemini API access** | *Either* a free [Google AI Studio](https://aistudio.google.com/apikey) key **or** a GCP project with Vertex AI enabled **or** a local [Ollama](https://ollama.com) server |
 | **YouTube Data API v3 key** | [Create one here](https://console.cloud.google.com/apis/credentials) |
 | **Gmail OAuth credentials** | Only needed if you want the Gmail tools |
 
@@ -90,6 +90,33 @@ Then authenticate:
 ```bash
 gcloud auth application-default login
 ```
+
+#### Option C — Local Ollama Model (no cloud required)
+
+Run any model locally using [Ollama](https://ollama.com):
+
+1. Install Ollama from <https://ollama.com/download>.
+2. Pull a model (e.g. `llama3.2` — commercially free under the Meta Llama license):
+
+```bash
+ollama pull llama3.2
+```
+
+3. Set these variables in `.env` (and remove / comment out Options A and B):
+
+```env
+USE_OLLAMA=true
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_MODEL=llama3.2
+```
+
+> **Commercially-free models recommended for local/GCP use:**
+> | Model | Pull command | Notes |
+> |---|---|---|
+> | `llama3.2` | `ollama pull llama3.2` | Meta Llama 3.2 — commercial use permitted |
+> | `mistral` | `ollama pull mistral` | Mistral 7B — Apache 2.0 license |
+> | `gemma2` | `ollama pull gemma2` | Google Gemma 2 — commercial use permitted |
+> | `phi3` | `ollama pull phi3` | Microsoft Phi-3 Mini — MIT license |
 
 #### YouTube & Gmail (both options)
 
@@ -158,13 +185,13 @@ adk_assistant/
 
 ### Changing the model
 
-Set the `AGENT_MODEL` env var in your `.env`:
+Set the `AGENT_MODEL` env var in your `.env` for Gemini models:
 
 ```env
 AGENT_MODEL=gemini-2.0-flash-001
 ```
 
-Common choices:
+Common Gemini choices:
 
 | Model | Notes |
 |---|---|
@@ -172,6 +199,14 @@ Common choices:
 | `gemini-2.0-flash-live-001` | Live/streaming mode (Vertex AI only, `us-east4`) |
 | `gemini-1.5-flash-002` | Previous-gen flash |
 | `gemini-1.5-pro` | Higher quality, higher cost |
+
+To use a local Ollama model instead, set:
+
+```env
+USE_OLLAMA=true
+OLLAMA_MODEL=llama3.2        # any model you have pulled
+OLLAMA_BASE_URL=http://localhost:11434
+```
 
 ### Region (Vertex AI only)
 
@@ -234,6 +269,7 @@ The file is plain markdown — you can read and edit it directly.
 - [x] Hierarchical local memory (markdown-backed)
 - [x] Local file search by name, glob, and time bounds
 - [x] Full-text search inside local files
+- [x] Local Ollama model support (via LiteLLM)
 - [ ] Chunked transcript processing for multi-hour podcasts
 - [ ] Automatic per-query cost tracking
 - [ ] Google Calendar integration
