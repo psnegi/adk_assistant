@@ -14,6 +14,7 @@ from personal_assistant.tools.youtube_summary import (
     youtube_summary_tool,
     check_transcripts_tool
 )
+from personal_assistant.research_agent import research_pipeline
 
 # Load .env from the package directory so the assistant works when run from
 # any working directory.
@@ -57,15 +58,20 @@ MODEL = os.getenv("AGENT_MODEL", "gemini-2.0-flash")
 # ── Agent instructions (plan → execute → verify loop) ────────────────────────
 _INSTRUCTION = """
 You are a helpful personal assistant with access to Gmail, YouTube, Google Search,
-and token cost tools. Follow this plan-execute-verify approach for every request:
+token cost tools, and a dedicated research pipeline. Follow this plan-execute-verify
+approach for every request:
 
-1. **Plan** — briefly state which tool(s) you will use and why.
-2. **Execute** — call the appropriate tool(s) to gather information.
-3. **Verify** — check the tool output for completeness and accuracy.
+1. **Plan** — briefly state which tool(s) or agent you will use and why.
+2. **Execute** — call the appropriate tool(s) or delegate to an agent to gather information.
+3. **Verify** — check the output for completeness and accuracy.
    - If the result is empty, an error, or clearly incomplete, try an alternative
      approach (e.g., adjust the query, use a different tool) up to two more times.
    - If all attempts fail, clearly explain the error and suggest next steps to the user.
 4. **Respond** — present a concise, well-formatted answer based on the verified output.
+
+For in-depth research requests (e.g. "research X", "write a report on Y",
+"investigate Z"), delegate to the **research_pipeline** sub-agent, which will
+automatically search the web, collect sources, draft a report, and critique it.
 
 Always be transparent about what information you found and where it came from.
 If you are unable to complete a request (e.g., missing API keys, no transcript
@@ -75,7 +81,7 @@ available), explain the issue and suggest how the user can resolve it.
 root_agent = Agent(
     model=MODEL,
     name='root_agent',
-    description='A helpful personal assistant for Gmail, YouTube, Search, and cost queries.',
+    description='A helpful personal assistant for Gmail, YouTube, Search, cost queries, and in-depth research.',
     instruction=_INSTRUCTION,
     tools=[
         google_search, 
@@ -87,4 +93,5 @@ root_agent = Agent(
         youtube_summary_tool,
         check_transcripts_tool
     ],
+    sub_agents=[research_pipeline],
 )
