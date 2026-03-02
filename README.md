@@ -159,7 +159,7 @@ adk_assistant/
 │   ├── __init__.py
 │   ├── agent.py                # Root agent definition & tool wiring
 │   ├── research_agent.py       # Sequential research pipeline (sub-agent)
-│   ├── model_config.py         # Shared model selection (Gemini / Ollama)
+│   ├── model_config.py         # Shared model selection (Gemini / Ollama via LiteLLM)
 │   ├── onetime_auth_flow.py    # One-time Gmail OAuth helper
 │   ├── .env.example            # Template — copy to .env
 │   └── tools/
@@ -170,6 +170,9 @@ adk_assistant/
 │       ├── file_search.py          # Local file & content search
 │       └── web_research.py         # Web page fetcher (used by research pipeline)
 ├── tests/
+│   ├── test_agent_config.py        # Ollama helpers, voice instructions, tool wiring
+│   ├── test_model_config.py        # build_model() Gemini / Ollama / LiteLLM tests
+│   ├── test_research_agent.py      # Research pipeline structure tests
 │   ├── test_gmail_tools.py
 │   ├── test_youtube_tools.py
 │   ├── test_token_cost_calculator.py
@@ -275,12 +278,78 @@ personal_assistant/.env
  │
  ├── USE_OLLAMA=true  ──────────────────▶  LiteLlm("ollama/<OLLAMA_MODEL>")
  │                                         (served at OLLAMA_BASE_URL)
+ │                                         ADK ↔ LiteLLM ↔ Ollama HTTP API
  ├── GOOGLE_GENAI_USE_VERTEXAI=true  ──▶  Vertex AI Gemini (AGENT_MODEL)
  └── GOOGLE_API_KEY set  ───────────────▶  Google AI Studio Gemini (AGENT_MODEL)
                 │
                 ▼
           build_model()  ──▶  MODEL  ──▶  shared by all agents
 ```
+
+> **Why LiteLLM instead of calling the Ollama HTTP API directly?**
+> ADK agents require a model object that implements tool calling, content
+> formatting, and streaming.  ADK's built-in `LiteLlm` adapter (from
+> `google.adk.models.lite_llm`) translates ADK's internal protocol to the
+> OpenAI-compatible API that Ollama exposes.  Using `LiteLlm` means:
+>
+> * Tool / function-calling works out of the box.
+> * You get the same agent code path regardless of backend (Gemini or Ollama).
+> * No extra HTTP client code to maintain.
+>
+> Calling the Ollama REST API directly would require reimplementing all of
+> this plumbing, so `LiteLlm` is the recommended (and simplest) approach.
+
+---
+
+## Voice / TTS & STT
+
+The ADK web interface (`adk web`) provides built-in voice support.  No
+additional TTS or STT libraries are required in this project — the heavy
+lifting is handled by ADK and the browser.
+
+### How it works
+
+```
+Microphone  ──▶  Browser Web Speech API (STT)  ──▶  text
+                                                       │
+                                                       ▼
+                                                  ADK agent
+                                                  (Gemini or Ollama via LiteLLM)
+                                                       │
+                                                       ▼
+Speaker  ◀──  Browser SpeechSynthesis (TTS)  ◀──  response text
+```
+
+| Layer | Gemini (cloud) | Ollama (local) |
+|---|---|---|
+| **STT** | Browser Web Speech API *or* Gemini Live bidirectional audio | Browser Web Speech API |
+| **LLM** | Gemini model (Google AI Studio / Vertex AI) | Local Ollama model via ADK `LiteLlm` |
+| **TTS** | Browser SpeechSynthesis *or* Gemini Live audio output | Browser SpeechSynthesis |
+
+### Gemini Live (bidirectional audio streaming)
+
+When using a Gemini Live model (e.g. `gemini-2.0-flash-live-001` on Vertex AI
+in `us-east4`), ADK supports true bidirectional audio streaming via the
+`/run_live` WebSocket endpoint.  Audio is sent and received natively without
+browser-side STT/TTS.
+
+### Ollama voice interaction
+
+Ollama serves text-only LLMs and does not provide native audio endpoints.
+Voice interaction with Ollama models relies on the **browser's built-in speech
+APIs**:
+
+1. The browser captures speech and converts it to text (STT).
+2. The text is sent to the Ollama model through ADK's `LiteLlm` adapter.
+3. The model's text response is spoken aloud by the browser (TTS).
+
+The agent instructions include **voice-optimised guidelines** (short
+sentences, plain language, no markdown) so that TTS output sounds natural even
+when the model is streaming tokens.
+
+> **Tip:** Smaller Ollama models (`phi3:mini`, `llama3.2`, `mistral`) produce
+> faster first-token latency, which makes the voice experience feel more
+> responsive.
 
 ---
 
@@ -394,14 +463,15 @@ The file is plain markdown — you can read and edit it directly.
 - [x] Hierarchical local memory (markdown-backed)
 - [x] Local file search by name, glob, and time bounds
 - [x] Full-text search inside local files
-- [x] Local Ollama model support (via LiteLLM)
+- [x] Local Ollama model support (via ADK `LiteLlm` adapter)
+- [x] Streaming voice instructions (sentence-level TTS-optimised responses)
+- [x] Browser-based voice interaction (STT/TTS via `adk web`)
 - [ ] Chunked transcript processing for multi-hour podcasts
 - [ ] Automatic per-query cost tracking
 - [ ] Google Calendar integration
 - [ ] GitHub-backed book/reading list from podcast mentions
 - [ ] Multi-language transcript support
-- [x] Streaming voice instructions (sentence-level TTS-optimised responses)
-- [ ] Voice interface
+- [ ] Gemini Live bidirectional audio streaming integration
 
 ---
 

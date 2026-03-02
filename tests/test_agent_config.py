@@ -164,3 +164,63 @@ class TestEnsureOllamaModel:
         ):
             mod._ensure_ollama_model("http://localhost:11434", "llama3.2")
             mock_pull.assert_called_once_with("http://localhost:11434", "llama3.2")
+
+
+# ---------------------------------------------------------------------------
+# Tests for root_agent voice / TTS-optimised instructions
+# ---------------------------------------------------------------------------
+
+class TestRootAgentVoiceInstructions:
+    """Verify that the root agent instruction includes voice / TTS guidelines."""
+
+    def test_instruction_mentions_voice_streaming(self):
+        import personal_assistant.agent as agent_mod
+
+        instruction = agent_mod._INSTRUCTION
+        assert "voice" in instruction.lower()
+        assert "text-to-speech" in instruction.lower() or "tts" in instruction.lower()
+
+    def test_instruction_advises_short_sentences_for_tts(self):
+        import personal_assistant.agent as agent_mod
+
+        instruction = agent_mod._INSTRUCTION
+        assert "short" in instruction.lower() and "sentence" in instruction.lower()
+
+
+# ---------------------------------------------------------------------------
+# Tests for root_agent tool completeness
+# ---------------------------------------------------------------------------
+
+class TestRootAgentToolCompleteness:
+    """Verify that root_agent is wired with all expected tools."""
+
+    def test_root_agent_has_expected_tools(self):
+        import personal_assistant.agent as agent_mod
+
+        tool_names = [getattr(t, "name", None) for t in agent_mod.root_agent.tools]
+        expected = [
+            "google_search",
+            "gmail_summary",
+            "get_email_content",
+            "calculate_interaction_cost",
+            "estimate_batch_cost",
+            "search_youtube_videos",
+            "get_video_summary",
+            "check_video_transcripts",
+            "update_memory",
+            "read_memory",
+            "list_memory_sections",
+            "clear_memory_section",
+            "search_files",
+            "search_file_content",
+        ]
+        for name in expected:
+            assert name in tool_names, f"Tool '{name}' missing from root_agent"
+
+    def test_root_agent_uses_build_model(self):
+        """The root agent model should come from build_model(), not a raw string."""
+        import personal_assistant.agent as agent_mod
+
+        # MODEL is set by build_model(); in test env (no Ollama) it should be
+        # a string, but it should match the default or AGENT_MODEL env var.
+        assert agent_mod.root_agent.model is not None

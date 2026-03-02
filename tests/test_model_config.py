@@ -106,3 +106,19 @@ class TestBuildModelOllama:
             model="ollama/mistral",
             api_base="http://192.168.1.10:11434",
         )
+
+    def test_ollama_uses_litellm_not_raw_api(self, monkeypatch):
+        """Ollama integration must go through ADK's LiteLlm adapter, not raw HTTP."""
+        monkeypatch.setenv("USE_OLLAMA", "true")
+        monkeypatch.setenv("OLLAMA_MODEL", "llama3.2")
+
+        mock_cls, mock_instance = self._mock_litellm(monkeypatch)
+
+        import importlib
+        import personal_assistant.model_config as mc
+        importlib.reload(mc)
+
+        result = mc.build_model()
+        # Must be a LiteLlm wrapper, not a plain string or raw API object
+        assert result is mock_instance
+        mock_cls.assert_called_once()
