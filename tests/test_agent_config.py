@@ -34,7 +34,7 @@ def _load_agent_module():
             "USE_OLLAMA": "false",
             "GOOGLE_API_KEY": "test-key",
             "YOUTUBE_API_KEY": "test-key",
-        }, clear=False),
+        }, clear=True),
     ):
         import personal_assistant.agent as ag
 
