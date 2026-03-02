@@ -80,6 +80,7 @@ def _ollama_pull_model(base_url: str, model: str) -> None:
             exc,
             model,
         )
+        raise
 
 
 def _ensure_ollama_model(base_url: str, model: str) -> None:
