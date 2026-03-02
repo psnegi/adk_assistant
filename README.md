@@ -125,6 +125,7 @@ YOUTUBE_API_KEY=<your-youtube-data-api-key>
 GMAIL_TOKEN_FILE=token.json
 ```
 
+
 ### 4. Set up Gmail OAuth (optional)
 
 If you want the Gmail tools:
@@ -183,7 +184,7 @@ adk_assistant/
 
 ## Configuration Reference
 
-### Changing the model
+### Changing the model (Google / Vertex AI)
 
 Set the `AGENT_MODEL` env var in your `.env` for Gemini models:
 
@@ -196,16 +197,36 @@ Common Gemini choices:
 | Model | Notes |
 |---|---|
 | `gemini-2.0-flash-001` | Default — fast & cheap |
-| `gemini-2.0-flash-live-001` | Live/streaming mode (Vertex AI only, `us-east4`) |
+| `gemini-2.0-flash-live-001` | Live/streaming voice mode (Vertex AI only, `us-east4`) |
 | `gemini-1.5-flash-002` | Previous-gen flash |
 | `gemini-1.5-pro` | Higher quality, higher cost |
 
-To use a local Ollama model instead, set:
+### Recommended locally-hosted models (Ollama / 16 GB RAM)
+
+These models run within a 16 GB RAM budget and provide solid chat +
+summarisation quality. Licences vary (Apache 2.0, MIT, Meta Llama Community,
+Gemma Terms), so please review the licence column and upstream terms to confirm
+they fit your personal or commercial use case. They are also well-suited to a
+16 GB GCP VM (e.g. `e2-standard-4` or `n1-standard-4`).
+
+| Ollama tag | Licence | RAM needed | Strengths |
+|---|---|---|---|
+| `llama3.2` | Meta Llama 3.2 Community (free for most commercial use) | ~4 GB | Fast, general-purpose chat; excellent default choice |
+| `llama3.1:8b` | Meta Llama 3.1 Community | ~6 GB | Stronger reasoning than 3.2, still fits 16 GB |
+| `mistral` | Apache 2.0 | ~5 GB | Great for instruction following & summarisation |
+| `gemma2:9b` | Gemma Terms (free for commercial use) | ~7 GB | Google model; strong code + reasoning |
+| `qwen2.5:7b` | Apache 2.0 | ~5 GB | Multilingual; good at structured output |
+| `phi3:mini` | MIT | ~2.5 GB | Very fast; good for low-latency voice |
+
+> **Voice / streaming tip:** models with a smaller footprint (`phi3:mini`,
+> `llama3.2`, `mistral`) respond faster and produce a more natural streaming
+> voice experience because the first token arrives sooner.
+
+To use one of these models set in your `.env`:
 
 ```env
 USE_OLLAMA=true
-OLLAMA_MODEL=llama3.2        # any model you have pulled
-OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_MODEL=mistral    # or any tag from the table above
 ```
 
 ### Region (Vertex AI only)
@@ -261,6 +282,8 @@ The file is plain markdown — you can read and edit it directly.
 | **"YouTube API key not found"** | Set `YOUTUBE_API_KEY` in `.env` |
 | **No transcript for a video** | Run `check_transcripts_tool` — some videos disable captions |
 | **Model not found** | Confirm the model name and that your region supports it |
+| **Ollama connection refused** | Make sure `ollama serve` is running; check `OLLAMA_BASE_URL` |
+| **Ollama pull times out** | Large models can take minutes to download; re-run the agent or `ollama pull <model>` manually |
 
 ---
 
@@ -275,6 +298,7 @@ The file is plain markdown — you can read and edit it directly.
 - [ ] Google Calendar integration
 - [ ] GitHub-backed book/reading list from podcast mentions
 - [ ] Multi-language transcript support
+- [x] Streaming voice instructions (sentence-level TTS-optimised responses)
 - [ ] Voice interface
 
 ---
