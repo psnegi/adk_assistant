@@ -197,8 +197,7 @@ class TestRootAgentToolCompleteness:
     def test_root_agent_has_expected_tools(self):
         import personal_assistant.agent as agent_mod
 
-        tool_names = [getattr(t, "name", None) for t in agent_mod.root_agent.tools]
-        expected = [
+        expected = {
             "google_search",
             "gmail_summary",
             "get_email_content",
@@ -213,9 +212,10 @@ class TestRootAgentToolCompleteness:
             "clear_memory_section",
             "search_files",
             "search_file_content",
-        ]
-        for name in expected:
-            assert name in tool_names, f"Tool '{name}' missing from root_agent"
+        }
+        actual = {getattr(t, "name", None) for t in agent_mod.root_agent.tools}
+        missing = expected - actual
+        assert not missing, f"Tools missing from root_agent: {missing}"
 
     def test_root_agent_uses_build_model(self):
         """The root agent model should come from build_model(), not a raw string."""
