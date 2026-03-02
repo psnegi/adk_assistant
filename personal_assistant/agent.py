@@ -61,8 +61,7 @@ if not os.getenv("YOUTUBE_API_KEY"):
     )
 
 # ── Model selection ───────────────────────────────────────────────────────────
-# Override via AGENT_MODEL env var for Gemini models, or set USE_OLLAMA=true
-# with OLLAMA_MODEL / OLLAMA_BASE_URL to use a locally hosted Ollama model.
+# Override via AGENT_MODEL env var to select a different Gemini model.
 MODEL = build_model()
 
 # ── Agent instructions (plan → execute → verify loop) ────────────────────────
