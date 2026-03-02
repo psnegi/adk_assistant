@@ -157,7 +157,9 @@ adk_assistant/
 ├── .devcontainer/              # VS Code dev container config
 ├── personal_assistant/
 │   ├── __init__.py
-│   ├── agent.py                # Agent definition & tool wiring
+│   ├── agent.py                # Root agent definition & tool wiring
+│   ├── research_agent.py       # Sequential research pipeline (sub-agent)
+│   ├── model_config.py         # Shared model selection (Gemini / Ollama)
 │   ├── onetime_auth_flow.py    # One-time Gmail OAuth helper
 │   ├── .env.example            # Template — copy to .env
 │   └── tools/
@@ -165,7 +167,8 @@ adk_assistant/
 │       ├── youtube_summary.py      # YouTube search & transcript tools
 │       ├── token_cost_calculator.py# Cost estimation tools
 │       ├── memory_manager.py       # Hierarchical local memory (markdown)
-│       └── file_search.py          # Local file & content search
+│       ├── file_search.py          # Local file & content search
+│       └── web_research.py         # Web page fetcher (used by research pipeline)
 ├── tests/
 │   ├── test_gmail_tools.py
 │   ├── test_youtube_tools.py
@@ -179,6 +182,105 @@ adk_assistant/
 
 > **Sensitive files you must provide yourself** (never committed):  
 > `client_secret.json` · `token.json` · `personal_assistant/.env`
+
+---
+
+## Agentic Patterns
+
+The assistant uses three distinct ADK agent patterns, each suited to a different type of task.
+
+### 1. Single LLM Agent with Tools — *Conversational assistant*
+
+The `root_agent` (`agent.py`) is a plain `Agent` (i.e. `LlmAgent`) equipped with a curated set of tools and a **plan → execute → verify** system prompt. For every user request it:
+
+1. **Plans** — briefly states which tool(s) to call and why.
+2. **Executes** — invokes the tool(s).
+3. **Verifies** — checks the result; retries an alternative approach up to twice on failure.
+4. **Responds** — delivers a concise, well-formatted answer.
+
+This pattern handles single-step or lightly chained tasks: reading email, searching YouTube, performing a web search, estimating costs, managing memory, or finding local files.
+
+### 2. Sequential Agent — *Multi-stage research pipeline*
+
+When a research task is delegated to `research_pipeline` (`research_agent.py`), the work is split across three independent stages executed in order by a `SequentialAgent`:
+
+| Stage | Agent | Responsibility |
+|---|---|---|
+| 1 | `search_agent` | Runs 2–3 Google Search queries; outputs a ranked list of source URLs stored in session state. |
+| 2 | `collect_agent` | Fetches full text from up to 5 of those URLs using `fetch_web_page`; stores collected content in session state. |
+| 3 | `write_critique_loop` | Iteratively writes and refines the final report (see Loop Agent below). |
+
+Each stage reads its inputs from ADK session state (set via `output_key` by the previous stage) so data flows automatically without manual wiring.
+
+### 3. Loop Agent — *Iterative write–critique cycle*
+
+Stage 3 of the research pipeline is a `LoopAgent` (`write_critique_loop`) that repeats until the report meets quality standards or the maximum iteration count (3) is reached:
+
+```
+┌──────────────────────────────────────────┐
+│           write_critique_loop            │
+│                                          │
+│  write_agent  ──▶  critique_agent        │
+│      ▲                   │               │
+│      │    NEEDS_REVISION │               │
+│      └───────────────────┘               │
+│                   │ APPROVED             │
+│                   ▼ (escalate)           │
+│              loop exits                  │
+└──────────────────────────────────────────┘
+```
+
+- **`write_agent`** drafts (or revises) the report using the collected content and any prior critique feedback stored in session state.
+- **`critique_agent`** evaluates the draft against five criteria: accuracy, completeness, structure, clarity, and references. If all criteria pass it responds `APPROVED` and calls `escalate` to exit the loop; otherwise it returns a numbered list of revision notes stored in session state for `write_agent` to act on.
+
+---
+
+## Overall Code Flow
+
+### Request routing
+
+```
+User
+ │
+ ▼
+root_agent  ──── reads memory on startup ──▶ read_memory
+ │
+ ├── Gmail request ──────────────────────▶ gmail_summary_tool / get_email_content_tool
+ ├── YouTube request ────────────────────▶ search_youtube_tool / youtube_summary_tool / check_transcripts_tool
+ ├── Web search ─────────────────────────▶ google_search
+ ├── Cost query ─────────────────────────▶ token_cost_calculator_tool / batch_cost_estimator_tool
+ ├── Memory operation ───────────────────▶ update_memory / read_memory / list_memory_sections / clear_memory_section
+ ├── File search ────────────────────────▶ search_files_tool / search_file_content_tool
+ └── Research request ───────────────────▶ research_pipeline (sub-agent)
+                                               │
+                                          SequentialAgent
+                                               │
+                              ┌────────────────┼────────────────┐
+                              ▼                ▼                ▼
+                        search_agent     collect_agent   write_critique_loop
+                        (Google Search)  (fetch URLs)    (LoopAgent)
+                                                              │
+                                                   ┌──────────┴──────────┐
+                                                   ▼                     ▼
+                                               write_agent          critique_agent
+                                               (draft/revise)       (approve/revise)
+```
+
+### Model selection flow
+
+All agents (`root_agent`, `search_agent`, `collect_agent`, `write_agent`, `critique_agent`) share the same model resolved by `model_config.build_model()` at startup:
+
+```
+personal_assistant/.env
+ │
+ ├── USE_OLLAMA=true  ──────────────────▶  LiteLlm("ollama/<OLLAMA_MODEL>")
+ │                                         (served at OLLAMA_BASE_URL)
+ ├── GOOGLE_GENAI_USE_VERTEXAI=true  ──▶  Vertex AI Gemini (AGENT_MODEL)
+ └── GOOGLE_API_KEY set  ───────────────▶  Google AI Studio Gemini (AGENT_MODEL)
+                │
+                ▼
+          build_model()  ──▶  MODEL  ──▶  shared by all agents
+```
 
 ---
 
