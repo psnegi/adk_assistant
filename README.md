@@ -184,9 +184,11 @@ Common choices:
 
 ### Recommended locally-hosted models (Ollama / 16 GB RAM)
 
-These models are **commercially free** (Apache 2.0 or MIT licence), run within a
-16 GB RAM budget, and provide solid chat + summarisation quality.  They are also
-well-suited to a 16 GB GCP VM (e.g. `e2-standard-4` or `n1-standard-4`).
+These models run within a 16 GB RAM budget and provide solid chat +
+summarisation quality. Licences vary (Apache 2.0, MIT, Meta Llama Community,
+Gemma Terms), so please review the licence column and upstream terms to confirm
+they fit your personal or commercial use case. They are also well-suited to a
+16 GB GCP VM (e.g. `e2-standard-4` or `n1-standard-4`).
 
 | Ollama tag | Licence | RAM needed | Strengths |
 |---|---|---|---|
