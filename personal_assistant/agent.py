@@ -66,7 +66,18 @@ def _ollama_pull_model(base_url: str, model: str) -> None:
                     continue
                 status = event.get("status", "")
                 if "total" in event and "completed" in event:
-                    pct = int(event["completed"] / event["total"] * 100)
+                    try:
+                        total = float(event["total"])
+                        completed = float(event["completed"])
+                    except (TypeError, ValueError):
+                        logger.info("[ollama pull] %s", status)
+                        continue
+                    if total <= 0:
+                        logger.info("[ollama pull] %s", status)
+                        continue
+                    pct_float = (completed / total) * 100.0
+                    pct_float = max(0.0, min(100.0, pct_float))
+                    pct = int(pct_float)
                     logger.info("[ollama pull] %s — %d%%", status, pct)
                 else:
                     logger.info("[ollama pull] %s", status)
