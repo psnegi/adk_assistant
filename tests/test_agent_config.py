@@ -5,36 +5,59 @@ import os
 import sys
 from unittest.mock import MagicMock, patch
 
+# Pre-load google.adk so its native extensions are in sys.modules before any
+# test-time reimport dance.  When tests run in isolation (i.e. without
+# test_research_agent.py being collected first), google.adk is not yet in
+# sys.modules.  If _load_agent_module() then patches sys.modules with
+# MagicMock entries and those entries are removed when the context manager
+# exits, a second import re-initialises the PyO3-compiled cryptography
+# extension which raises "only initialized once per interpreter process".
+# Importing google.adk here ensures it stays in sys.modules throughout.
+import google.adk.agents.llm_agent  # noqa: F401
+import google.adk.tools  # noqa: F401
+
 
 # ---------------------------------------------------------------------------
 # Helper: import the agent module without triggering heavy side-effects
 # ---------------------------------------------------------------------------
 
-def _load_agent_module():
+def _load_agent_module(extra_env: dict | None = None):
     """Import personal_assistant.agent with heavy dependencies mocked out.
+
+    Only ``personal_assistant.agent`` is evicted from the module cache on each
+    call so that its module-level env-var checks re-execute, while heavy ADK
+    and native-extension modules stay cached to avoid PyO3 reinitialization
+    errors.
 
     Returns the freshly imported module so that tests can access its helpers
     directly (e.g. ``mod._ensure_ollama_model``).
     """
-    # Drop any cached copy so each test-class gets an isolated import
-    for key in list(sys.modules):
-        if key.startswith("personal_assistant"):
-            del sys.modules[key]
+    # Evict only the agent and research_agent modules so their module-level
+    # env-var checks and sub-agent instantiation re-execute cleanly.
+    # Keeping heavy ADK / native-extension modules in sys.modules avoids
+    # PyO3 "only initialized once" errors on repeated imports.
+    sys.modules.pop("personal_assistant.agent", None)
+    sys.modules.pop("personal_assistant.research_agent", None)
+
+    # Ensure tool mocks are present (only set if not already there).
+    _TOOL_MOCKS = {
+        "personal_assistant.tools.gmail_summary",
+        "personal_assistant.tools.token_cost_calculator",
+        "personal_assistant.tools.youtube_summary",
+    }
+    for mod_name in _TOOL_MOCKS:
+        sys.modules.setdefault(mod_name, MagicMock())
+
+    env = {
+        "USE_OLLAMA": "false",
+        "GOOGLE_API_KEY": "test-key",
+        "YOUTUBE_API_KEY": "test-key",
+        **(extra_env or {}),
+    }
 
     with (
-        patch.dict("sys.modules", {
-            "google.adk.agents.llm_agent": MagicMock(),
-            "google.adk.tools": MagicMock(),
-            "personal_assistant.tools.gmail_summary": MagicMock(),
-            "personal_assistant.tools.token_cost_calculator": MagicMock(),
-            "personal_assistant.tools.youtube_summary": MagicMock(),
-        }),
         patch("dotenv.load_dotenv"),
-        patch.dict(os.environ, {
-            "USE_OLLAMA": "false",
-            "GOOGLE_API_KEY": "test-key",
-            "YOUTUBE_API_KEY": "test-key",
-        }, clear=True),
+        patch.dict(os.environ, env, clear=True),
     ):
         import personal_assistant.agent as ag
 
@@ -164,3 +187,30 @@ class TestEnsureOllamaModel:
         ):
             mod._ensure_ollama_model("http://localhost:11434", "llama3.2")
             mock_pull.assert_called_once_with("http://localhost:11434", "llama3.2")
+
+
+# ---------------------------------------------------------------------------
+# Tests for voice / TTS configuration
+# ---------------------------------------------------------------------------
+
+class TestVoiceConfig:
+    """Verify TTS generate_content_config is set for live models only."""
+
+    def test_no_voice_config_for_default_model(self):
+        mod = _load_agent_module({"AGENT_MODEL": "gemini-2.0-flash"})
+        assert mod._GENERATE_CONTENT_CONFIG is None
+
+    def test_voice_config_set_for_live_model(self):
+        from google.genai import types as genai_types
+
+        mod = _load_agent_module({"AGENT_MODEL": "gemini-2.0-flash-live-001"})
+        cfg = mod._GENERATE_CONTENT_CONFIG
+
+        assert cfg is not None
+        assert isinstance(cfg, genai_types.GenerateContentConfig)
+        assert "AUDIO" in cfg.response_modalities
+        assert cfg.speech_config is not None
+
+    def test_no_voice_config_for_ollama(self):
+        mod = _load_agent_module({"USE_OLLAMA": "true", "OLLAMA_MODEL": "llama3.2"})
+        assert mod._GENERATE_CONTENT_CONFIG is None

@@ -106,3 +106,35 @@ class TestBuildModelOllama:
             model="ollama/mistral",
             api_base="http://192.168.1.10:11434",
         )
+
+
+class TestIsVoiceModel:
+    """is_voice_model() returns True only for Gemini Live model names."""
+
+    def test_returns_false_for_default_gemini_model(self, monkeypatch):
+        monkeypatch.setenv("USE_OLLAMA", "false")
+        monkeypatch.setenv("AGENT_MODEL", "gemini-2.0-flash")
+
+        from personal_assistant.model_config import is_voice_model
+        assert is_voice_model() is False
+
+    def test_returns_true_for_live_gemini_model(self, monkeypatch):
+        monkeypatch.setenv("USE_OLLAMA", "false")
+        monkeypatch.setenv("AGENT_MODEL", "gemini-2.0-flash-live-001")
+
+        from personal_assistant.model_config import is_voice_model
+        assert is_voice_model() is True
+
+    def test_returns_false_for_ollama_even_with_live_in_name(self, monkeypatch):
+        monkeypatch.setenv("USE_OLLAMA", "true")
+        monkeypatch.setenv("AGENT_MODEL", "gemini-2.0-flash-live-001")
+
+        from personal_assistant.model_config import is_voice_model
+        assert is_voice_model() is False
+
+    def test_returns_false_when_agent_model_unset(self, monkeypatch):
+        monkeypatch.setenv("USE_OLLAMA", "false")
+        monkeypatch.delenv("AGENT_MODEL", raising=False)
+
+        from personal_assistant.model_config import is_voice_model
+        assert is_voice_model() is False

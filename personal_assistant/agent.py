@@ -6,7 +6,8 @@ import urllib.request
 from dotenv import load_dotenv
 from google.adk.agents.llm_agent import Agent
 from google.adk.tools import google_search
-from personal_assistant.model_config import build_model
+from google.genai import types as genai_types
+from personal_assistant.model_config import build_model, is_voice_model
 from personal_assistant.research_agent import research_pipeline
 from personal_assistant.tools.gmail_summary import gmail_summary_tool, get_email_content_tool
 from personal_assistant.tools.token_cost_calculator import (
@@ -103,7 +104,6 @@ def _ollama_pull_model(base_url: str, model: str) -> None:
             exc,
             model,
         )
-        raise
 
 
 def _ensure_ollama_model(base_url: str, model: str) -> None:
@@ -132,7 +132,6 @@ if _use_ollama:
     # locate a non-default Ollama server.
     os.environ.setdefault("OLLAMA_API_BASE", _ollama_base_url)
     _ensure_ollama_model(_ollama_base_url, _ollama_model)
-    MODEL = f"ollama/{_ollama_model}"
     logger.info("Using local Ollama model: %s (server: %s)", _ollama_model, _ollama_base_url)
 else:
     if _use_vertex:
@@ -151,12 +150,6 @@ else:
                 "personal_assistant/.env as GOOGLE_API_KEY=<your-key>."
             )
 
-    # ── Model selection (Google / Vertex AI) ─────────────────────────────────
-    # Override via AGENT_MODEL env var.
-    # Use "gemini-2.0-flash" for free Google AI Studio keys (chat mode).
-    # Use "gemini-2.0-flash-live-001" for Vertex AI live/streaming mode.
-    MODEL = os.getenv("AGENT_MODEL", "gemini-2.0-flash")
-
 if not os.getenv("YOUTUBE_API_KEY"):
     logger.warning(
         "YOUTUBE_API_KEY is not set — YouTube search/summary tools will not work. "
@@ -166,7 +159,36 @@ if not os.getenv("YOUTUBE_API_KEY"):
 # ── Model selection ───────────────────────────────────────────────────────────
 # Override via AGENT_MODEL env var for Gemini models, or set USE_OLLAMA=true
 # with OLLAMA_MODEL / OLLAMA_BASE_URL to use a locally hosted Ollama model.
+# ADK requires a model object that implements its interface; LiteLLM is used
+# as the adapter for Ollama — calling the Ollama REST API directly would
+# bypass the ADK agent framework.
 MODEL = build_model()
+
+# ── Voice / TTS configuration ─────────────────────────────────────────────────
+# Gemini Live models (e.g. gemini-2.0-flash-live-001) support native TTS/STT
+# through the ADK generate_content_config.  Ollama models and standard Gemini
+# chat models are text-only; _GENERATE_CONTENT_CONFIG is left as None for them.
+# For STT (speech-to-text), the Live API automatically transcribes audio input;
+# no additional configuration is required beyond using a Live-capable model.
+_GENERATE_CONTENT_CONFIG = None
+if is_voice_model():
+    _voice_name = os.getenv("VOICE_NAME", "Kore")
+    _GENERATE_CONTENT_CONFIG = genai_types.GenerateContentConfig(
+        response_modalities=["AUDIO"],
+        speech_config=genai_types.SpeechConfig(
+            voice_config=genai_types.VoiceConfig(
+                prebuilt_voice_config=genai_types.PrebuiltVoiceConfig(
+                    voice_name=_voice_name,
+                )
+            )
+        ),
+    )
+    logger.info(
+        "Voice mode enabled: TTS configured for model '%s' with voice '%s'. "
+        "STT is handled automatically by the Gemini Live API.",
+        os.getenv("AGENT_MODEL", ""),
+        _voice_name,
+    )
 
 # ── Agent instructions (plan → execute → verify loop) ────────────────────────
 _INSTRUCTION = """
@@ -220,6 +242,7 @@ root_agent = Agent(
     name='root_agent',
     description='A helpful personal assistant for Gmail, YouTube, Search, cost queries, local memory, and file search.',
     instruction=_INSTRUCTION,
+    generate_content_config=_GENERATE_CONTENT_CONFIG,
     tools=[
         google_search, 
         gmail_summary_tool, 
