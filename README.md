@@ -157,9 +157,9 @@ adk_assistant/
 ├── .devcontainer/              # VS Code dev container config
 ├── personal_assistant/
 │   ├── __init__.py
-│   ├── agent.py                # Root agent definition & tool wiring
+│   ├── agent.py                # Root agent definition, tool wiring & voice config
 │   ├── research_agent.py       # Sequential research pipeline (sub-agent)
-│   ├── model_config.py         # Shared model selection (Gemini / Ollama)
+│   ├── model_config.py         # Shared model selection (Gemini / Ollama / voice)
 │   ├── onetime_auth_flow.py    # One-time Gmail OAuth helper
 │   ├── .env.example            # Template — copy to .env
 │   └── tools/
@@ -170,12 +170,15 @@ adk_assistant/
 │       ├── file_search.py          # Local file & content search
 │       └── web_research.py         # Web page fetcher (used by research pipeline)
 ├── tests/
+│   ├── test_agent_config.py        # Ollama helpers + voice config tests
+│   ├── test_model_config.py        # Model selection & is_voice_model tests
 │   ├── test_gmail_tools.py
 │   ├── test_youtube_tools.py
 │   ├── test_token_cost_calculator.py
 │   ├── test_retry_utils.py
 │   ├── test_memory_manager.py      # Memory manager tests
-│   └── test_file_search.py         # File search tests
+│   ├── test_file_search.py         # File search tests
+│   └── test_research_agent.py      # Research pipeline structure tests
 ├── .gitignore
 └── README.md
 ```
@@ -282,6 +285,33 @@ personal_assistant/.env
           build_model()  ──▶  MODEL  ──▶  shared by all agents
 ```
 
+### Voice / TTS / STT flow
+
+TTS (text-to-speech) and STT (speech-to-text) are integrated through ADK's `generate_content_config` using the Gemini Live API. The helper `model_config.is_voice_model()` detects whether a Live-capable model is configured, and `agent.py` applies the appropriate ADK voice config automatically.
+
+```
+AGENT_MODEL=gemini-2.0-flash-live-001
+         │
+         ▼
+  is_voice_model() → True
+         │
+         ▼
+  GenerateContentConfig(
+    response_modalities=["AUDIO"],   ← TTS: model speaks responses
+    speech_config=SpeechConfig(...)  ← configures voice name
+  )
+         │
+         ▼
+  root_agent.generate_content_config  ← wired into the ADK agent
+
+  STT: handled automatically by the Gemini Live API — no extra config needed.
+       The Live API transcribes audio input before passing text to the agent.
+```
+
+**Ollama voice note:** Ollama models are text-only. `is_voice_model()` always returns `False` for Ollama, so `_GENERATE_CONTENT_CONFIG` is `None` and no TTS/STT config is applied. If you need voice with a local model, pipe audio through an external STT engine (e.g. Whisper) before the agent and an external TTS engine (e.g. pyttsx3) after it.
+
+**LiteLLM vs direct Ollama API:** ADK requires a model object that implements its internal interface. Using the Ollama REST API directly would bypass the ADK agent framework. `LiteLlm` (from `google-adk[extensions]`) is the correct adapter — it wraps the Ollama API in the interface ADK expects.
+
 ---
 
 ## Configuration Reference
@@ -299,9 +329,28 @@ Common Gemini choices:
 | Model | Notes |
 |---|---|
 | `gemini-2.0-flash-001` | Default — fast & cheap |
-| `gemini-2.0-flash-live-001` | Live/streaming voice mode (Vertex AI only, `us-east4`) |
+| `gemini-2.0-flash-live-001` | Live/streaming voice mode — enables TTS+STT (Vertex AI only, `us-east4`) |
 | `gemini-1.5-flash-002` | Previous-gen flash |
 | `gemini-1.5-pro` | Higher quality, higher cost |
+
+#### Enabling voice mode
+
+Set `AGENT_MODEL` to a Live API model in your `.env`:
+
+```env
+GOOGLE_GENAI_USE_VERTEXAI=true
+GOOGLE_CLOUD_PROJECT=<your-gcp-project-id>
+GOOGLE_CLOUD_LOCATION=us-east4
+AGENT_MODEL=gemini-2.0-flash-live-001
+```
+
+`agent.py` automatically detects the Live model via `is_voice_model()` and applies the ADK `generate_content_config` with `response_modalities=["AUDIO"]` and a `speech_config`. STT (audio → text) is handled automatically by the Gemini Live API with no additional configuration.
+
+Optionally set a different TTS voice:
+
+```env
+VOICE_NAME=Kore   # default; see https://cloud.google.com/vertex-ai/generative-ai/docs/live-api for available voices
+```
 
 ### Recommended locally-hosted models (Ollama / 16 GB RAM)
 
@@ -318,11 +367,12 @@ they fit your personal or commercial use case. They are also well-suited to a
 | `mistral` | Apache 2.0 | ~5 GB | Great for instruction following & summarisation |
 | `gemma2:9b` | Gemma Terms (free for commercial use) | ~7 GB | Google model; strong code + reasoning |
 | `qwen2.5:7b` | Apache 2.0 | ~5 GB | Multilingual; good at structured output |
-| `phi3:mini` | MIT | ~2.5 GB | Very fast; good for low-latency voice |
+| `phi3:mini` | MIT | ~2.5 GB | Very fast; great for low-latency text chat |
 
-> **Voice / streaming tip:** models with a smaller footprint (`phi3:mini`,
-> `llama3.2`, `mistral`) respond faster and produce a more natural streaming
-> voice experience because the first token arrives sooner.
+> **Ollama voice note:** Ollama models are text-only. TTS/STT via the Gemini Live
+> API is not available with Ollama. For a faster *text* streaming experience,
+> smaller models (`phi3:mini`, `llama3.2`, `mistral`) produce the first token
+> sooner, which means the UI feels more responsive.
 
 To use one of these models set in your `.env`:
 
@@ -386,6 +436,8 @@ The file is plain markdown — you can read and edit it directly.
 | **Model not found** | Confirm the model name and that your region supports it |
 | **Ollama connection refused** | Make sure `ollama serve` is running; check `OLLAMA_BASE_URL` |
 | **Ollama pull times out** | Large models can take minutes to download; re-run the agent or `ollama pull <model>` manually |
+| **No voice output (TTS)** | Check that `AGENT_MODEL` starts with `gemini-2.0-flash-live`; voice requires Vertex AI with `us-east4` |
+| **Voice not working with Ollama** | Ollama models are text-only; switch to a Gemini Live model for TTS/STT |
 
 ---
 
@@ -395,13 +447,14 @@ The file is plain markdown — you can read and edit it directly.
 - [x] Local file search by name, glob, and time bounds
 - [x] Full-text search inside local files
 - [x] Local Ollama model support (via LiteLLM)
+- [x] TTS/STT integration via Gemini Live API (`gemini-2.0-flash-live-001`)
+- [x] Voice-optimised instruction prompt (sentence-level streaming)
 - [ ] Chunked transcript processing for multi-hour podcasts
 - [ ] Automatic per-query cost tracking
 - [ ] Google Calendar integration
 - [ ] GitHub-backed book/reading list from podcast mentions
 - [ ] Multi-language transcript support
-- [x] Streaming voice instructions (sentence-level TTS-optimised responses)
-- [ ] Voice interface
+- [ ] Voice interface via `adk web` with a Live-capable model
 
 ---
 
